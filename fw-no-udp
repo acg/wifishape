@@ -1,0 +1,66 @@
+#!/bin/sh
+
+set -v
+
+# initially, close things down by default
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT DROP
+
+# flush tables
+iptables -F INPUT
+iptables -F FORWARD
+iptables -F OUTPUT
+
+# reject forwarding of udp packets
+for iface in ath0 wlan0; do
+  iptables -A FORWARD -i $iface -p udp -j REJECT
+  iptables -A FORWARD -i $iface -p udp -j REJECT
+done
+
+# allow all traffic on local / tunneled ifaces
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -i tun0 -j ACCEPT
+
+# tcp: on the external (internet-facing) interface, allow
+# incoming connections only we've initiated them from the inside first
+iptables -A INPUT -i eth0 -p tcp -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# icmp: allow pings, pongs, traceroutes and related stuff
+for iface in ath0 eth0 wlan0; do
+  # pong
+  iptables -A INPUT -i $iface -p icmp --icmp-type 0 -j ACCEPT
+  # unreachable
+  iptables -A INPUT -i $iface -p icmp --icmp-type 3 -j ACCEPT
+  # source quench, router is dropping our packet
+  iptables -A INPUT -i $iface -p icmp --icmp-type 4 -j ACCEPT
+  # ping
+  iptables -A INPUT -i $iface -p icmp --icmp-type 8 -j ACCEPT
+  # ttl exceeded, for traceroute
+  iptables -A INPUT -i $iface -p icmp --icmp-type 11 -j ACCEPT
+done
+
+# udp: allow dhcp, dns responses in on external interface
+iptables -A INPUT -i eth0 -p udp --sport 53 -j ACCEPT
+iptables -A INPUT -i eth0 -p udp --sport 67 -j ACCEPT
+iptables -A INPUT -i eth0 -p udp --sport 68 -j ACCEPT
+
+# udp: allow dhcp, dns requests in on internal (wireless) interfaces
+for iface in ath0 wlan0; do
+  iptables -A INPUT -i $iface -p udp --dport 53 -j ACCEPT
+  iptables -A INPUT -i $iface -p udp --dport 67 -j ACCEPT
+  iptables -A INPUT -i $iface -p udp --dport 68 -j ACCEPT
+done
+
+# tcp: allow ssh / ssl into internal (wireless) interfaces
+for iface in ath0 wlan0; do
+  iptables -A INPUT -i $iface -p tcp --dport 22 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+  iptables -A INPUT -i $iface -p tcp --dport 443 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+done
+
+# set default policies, open things back up
+iptables -A INPUT -j REJECT
+iptables -P INPUT DROP
+iptables -P FORWARD ACCEPT
+iptables -P OUTPUT ACCEPT
+

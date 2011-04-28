@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -v
+set -e
+
+dev="$1" && shift
+
+# on lan-facing interface, only allow ssh, dhcp, dns, and pings in
+iptables -A INPUT -i "$dev" -p tcp --dport ssh -j ACCEPT
+iptables -A INPUT -i "$dev" -p udp --sport bootpc --dport bootps -j ACCEPT
+iptables -A INPUT -i "$dev" -p udp --dport domain -j ACCEPT
+iptables -A INPUT -i "$dev" -p icmp -j ACCEPT
+

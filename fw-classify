@@ -1,0 +1,105 @@
+#!/bin/sh
+
+# packet classification, for traffic shaping. this puts packets
+# into 3 priority bands via marking.
+#
+# priority 1 - for low delay, interactive traffic
+# priority 2 - for common bulk traffic
+# priority 3 - for less common bulk traffic (e.g. p2p)
+
+iface=$1
+
+usage()
+{
+  echo "Usage: $0 <iface> <outward|inward>"
+  echo ""
+  echo "outward: internet-facing interface, traffic classified by src port"
+  echo "inward: lan-facing interface, traffic classified by dest port"
+}
+
+if [ $# -lt 2 ]; then
+  usage
+  exit 1
+fi
+
+if [ "x$2" == "xoutward" ]; then
+  portmatch="--sport"
+elif [ "x$2" == "xinward" ]; then
+  portmatch="--dport"
+else
+  echo "bad interface type."
+  echo ""
+  usage
+  exit 1
+fi
+
+set -v
+
+# shorten marking commands
+mark_pre="iptables -t mangle -A PREROUTING -i $iface"
+mark_out="iptables -t mangle -A OUTPUT -o $iface"
+
+# mark by protocol (e.g. icmp, udp, tcp...)
+mark_proto()
+{
+  proto=$1
+  prio=$2
+
+  # mark packets when forwarding
+  $mark_pre -p $proto -j MARK --set-mark 0x$prio
+  $mark_pre -p $proto -j RETURN
+
+  # mark packets that originate here
+  $mark_out -p $proto -j MARK --set-mark 0x$prio
+  $mark_out -p $proto -j RETURN
+}
+
+# mark by port (e.g. ssh, www, ftp...)
+mark_port()
+{
+  proto=$1
+  port=$2
+
+  if [ $# -eq 4 ]; then
+    extra=$3
+    shift
+  else
+    extra=""
+  fi
+
+  prio=$3
+
+  # mark packets when forwarding
+  $mark_pre -p $proto $portmatch $port $extra -j MARK --set-mark 0x$prio
+  $mark_pre -p $proto $portmatch $port $extra -j RETURN
+
+  # mark packets that originate here
+  $mark_out -p $proto --sport $port $extra -j MARK --set-mark 0x$prio
+  $mark_out -p $proto --sport $port $extra -j RETURN
+  $mark_out -p $proto --dport $port $extra -j MARK --set-mark 0x$prio
+  $mark_out -p $proto --dport $port $extra -j RETURN
+}
+
+# priority 1 band
+mark_proto icmp 1
+mark_port tcp ssh "-m tos ! --tos Maximize-Throughput" 1
+mark_port tcp telnet 1
+mark_port udp domain 1
+mark_port udp bootps 1
+mark_port tcp ircd 1
+mark_port tcp ntp 1
+
+# priority 2 band
+mark_port tcp www 2
+mark_port tcp https 2
+mark_port tcp ftp 2
+mark_port tcp cvspserver 2
+mark_port tcp 3690 2 # subversion
+mark_port tcp ssh "-m tos --tos Maximize-Throughput" 2
+
+# priority 3 band
+mark_proto udp 3
+
+# depending on the tc configuration, all unmarked traffic will go
+# to one of the bands by default
+

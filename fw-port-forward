@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -v
+set -e
+
+dev="$1" && shift
+host="$1" && shift
+port="$1" && shift
+proto="${1:-tcp}"
+porttype="${2:-dport}"
+
+/sbin/iptables -t nat -A PREROUTING -p "$proto" -i "$dev" --"$porttype" "$port" -j DNAT --to "$host"
+
+#/sbin/iptables -A FORWARD -p tcp -i "$dev" -d "$host" --dport "$port" -j ACCEPT
+

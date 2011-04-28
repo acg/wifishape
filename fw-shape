@@ -1,0 +1,79 @@
+#!/bin/sh
+
+set -v
+
+# note: ssh may drop you here, but don't worry, you'll soon be revived.
+
+# initially, close things down by default
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT DROP
+
+# flush tables
+iptables -F INPUT
+iptables -F FORWARD
+iptables -F OUTPUT
+
+# allow all traffic on local / tunneled ifaces
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -i tun0 -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A OUTPUT -o tun0 -j ACCEPT
+
+# tcp: on the external (internet-facing) interface, allow
+# incoming connections only if we've initiated them from the inside first
+iptables -A INPUT -i eth0 -p tcp -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# icmp: allow pings, pongs, traceroutes and related stuff
+for iface in ath0 eth0 wlan0; do
+  # pong
+  iptables -A INPUT -i $iface -p icmp --icmp-type 0 -j ACCEPT
+  # unreachable
+  iptables -A INPUT -i $iface -p icmp --icmp-type 3 -j ACCEPT
+  # source quench, router is dropping our packet
+  iptables -A INPUT -i $iface -p icmp --icmp-type 4 -j ACCEPT
+  # ping
+  iptables -A INPUT -i $iface -p icmp --icmp-type 8 -j ACCEPT
+  # ttl exceeded, for traceroute
+  iptables -A INPUT -i $iface -p icmp --icmp-type 11 -j ACCEPT
+done
+
+# udp: allow dhcp, dns /responses/ in on external interface
+iptables -A INPUT -i eth0 -p udp --sport 53 -j ACCEPT
+iptables -A INPUT -i eth0 -p udp --sport 67 -j ACCEPT
+iptables -A INPUT -i eth0 -p udp --sport 68 -j ACCEPT
+
+# udp: allow dhcp, dns /requests/ in on internal (wireless) interfaces
+for iface in ath0 wlan0; do
+  iptables -A INPUT -i $iface -p udp --dport 53 -j ACCEPT
+  iptables -A INPUT -i $iface -p udp --dport 67 -j ACCEPT
+  iptables -A INPUT -i $iface -p udp --dport 68 -j ACCEPT
+done
+
+# tcp: allow ssh / ssl into internal (wireless) interfaces
+for iface in ath0 wlan0; do
+  iptables -A INPUT -i $iface -p tcp --dport 22 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+  iptables -A INPUT -i $iface -p tcp --dport 443 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+done
+
+# wlan0 will eventually be an adhoc link to an upstream
+# seattlewireless node. for the moment, lock it down.
+iptables -A INPUT -i wlan0 -j DROP
+iptables -A FORWARD -i wlan0 -j DROP
+iptables -A FORWARD -o wlan0 -j DROP
+
+# clear existing mangle rules, they will be used in shaping
+iptables -t mangle -F
+
+# traffic shaping
+./fw-classify eth0 outward
+./natshape.sh -i eth0 -t outward -s 300
+./fw-classify ath0 inward
+./natshape.sh -i ath0 -t inward -s 3500
+
+# set default policies, open things back up
+iptables -A INPUT -j REJECT
+iptables -P INPUT DROP
+iptables -P FORWARD ACCEPT
+iptables -P OUTPUT ACCEPT
+

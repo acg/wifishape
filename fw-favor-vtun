@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -v
+
+# flush tables
+iptables -F INPUT
+iptables -F FORWARD
+iptables -F OUTPUT 
+iptables -P FORWARD ACCEPT
+iptables -P OUTPUT ACCEPT
+
+# only allow in a few services from the outside
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -i tun0 -j ACCEPT
+iptables -A INPUT -i eth0 -p icmp --icmp-type echo-request -j ACCEPT
+iptables -A INPUT -i eth0 -p icmp --icmp-type echo-reply -j ACCEPT
+iptables -A INPUT -i eth0 -p udp --sport 53 -j ACCEPT
+iptables -A INPUT -i ath0 -p icmp -j ACCEPT
+iptables -A INPUT -i ath0 -p udp --dport 67 -j ACCEPT
+iptables -A INPUT -i ath0 -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -i ath0 -p tcp --dport 22 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -i wlan0 -p icmp -j ACCEPT
+iptables -A INPUT -i wlan0 -p udp --dport 67
+iptables -A INPUT -i wlan0 -p udp --dport 53
+iptables -A INPUT -i wlan0 -p tcp --dport 22 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -i wlan0 -p tcp --dport 443 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -P INPUT DROP
+

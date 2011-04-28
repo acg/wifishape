@@ -1,0 +1,38 @@
+#!/bin/sh
+
+allow_host=$1
+
+if [ -z "$allow_host" ]; then
+  allow_host=`./ssh-client-ip`
+fi
+
+if [ -z "$allow_host" ]; then
+  echo "Can't determine your ip from SSH_CLIENT or argv[1].";
+  exit 1
+fi
+
+# echo rules as we go
+set -v
+
+# flush tables
+iptables -F INPUT
+iptables -F FORWARD
+iptables -F OUTPUT 
+
+# outgoing connections are ok
+iptables -P OUTPUT ACCEPT
+
+# only forward packets from me
+iptables -A FORWARD -i ath0 -s $allow_host -j ACCEPT
+iptables -A FORWARD -i ath0 -d $allow_host -j ACCEPT
+iptables -A FORWARD -i lo -j ACCEPT
+iptables -A FORWARD -i eth0 -j ACCEPT
+iptables -P FORWARD DROP
+
+# only input packets from me 
+iptables -A INPUT -i ath0 -s $allow_host -j ACCEPT
+iptables -A INPUT -i ath0 -d $allow_host -j ACCEPT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -i eth0 -j ACCEPT
+iptables -P INPUT DROP
+

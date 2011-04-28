@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -v
+set -e
+
+dev="$1" && shift
+
+# on net-facing interface, only allow dhcp, dns, and pings in
+iptables -A INPUT -i "$dev" -p udp --sport bootps --dport bootpc -j ACCEPT
+iptables -A INPUT -i "$dev" -p udp --sport domain -j ACCEPT
+iptables -A INPUT -i "$dev" -p icmp -j ACCEPT
+

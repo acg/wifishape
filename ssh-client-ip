@@ -1,0 +1,2 @@
+#!/bin/sh
+echo "$SSH_CLIENT" | cut -f1 -d' '
