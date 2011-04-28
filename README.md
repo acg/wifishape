@@ -1,4 +1,4 @@
-# wifishape - traffic shaping for an linux open wifi ap #
+# wifishape - traffic shaping for a linux open wifi ap #
 
 Up until 2006 I ran an open wifi network with [pebble linux](http://www.nycwireless.net/supernode/pebble-linux/). Here are some scripts that were used to set up traffic prioritization ("make ssh lower latency than http") and bandwidth sharing ("more for me than for the freeloading neighbors").
 
